@@ -3,11 +3,15 @@ package main
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"math/rand"
+	"io/ioutil"
+	"log"
 	"runtime"
+	"sort"
 
 	"github.com/gocolly/colly"
+	"golang.org/x/sys/windows/registry"
 
 	"os"
 	"path/filepath"
@@ -120,7 +124,7 @@ func GetBingBackgroundImageURL() string {
 					// 获取文件名
 					// fileName := filepath.Base(r.Request.URL.Path)
 					day := time.Now().Format("2006-01-02")
-					fileName := EncodeMD5(fmt.Sprintf("%s", day)) + ".jpg"
+					fileName := EncodeMD5(day) + ".jpg"
 					// 创建保存图片的完整路径
 					savePath = filepath.Join(CurrentPathDir, fileName)
 
@@ -138,6 +142,8 @@ func GetBingBackgroundImageURL() string {
 						fmt.Println("Error writing to file:", err)
 						return
 					}
+					// 最多只保留7张壁纸文件
+					delImage(CurrentPathDir, 7)
 					fmt.Println("Image downloaded:", fileName)
 				}
 			})
@@ -152,24 +158,53 @@ func GetBingBackgroundImageURL() string {
 
 }
 
-func main() {
-	// 设置可以并行执行的操作系统线程的最大数量
-	// runtime.GOMAXPROCS(2)
-	// // 创建 WaitGroup，用于等待所有线程执行完毕
-	// var wg sync.WaitGroup
+/**
+ * @description: 删除多余的壁纸文件
+ * @param {string} folderPath 存放壁纸的路径
+ * @param {int} imgNum 最多保留多少张壁纸
+ * @return {*}
+ */
+func delImage(folderPath string, imgNum int) {
 
-	// // 启动定时任务
-	// wg.Add(2)
-	// go func() {
-	// 	defer wg.Done()
-	// 	scheduleSetBackImage()
-	// }()
+	// 读取文件夹内容
+	files, err := ioutil.ReadDir(folderPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// 统计文件个数
+	fileCount := 0
+	for _, file := range files {
+		if !file.IsDir() {
+			fileCount++
+		}
+	}
+
+	// 如果文件个数超过imgNum个，则删除最老的文件
+	if fileCount > imgNum {
+		// 按修改时间对文件进行排序
+		sort.Slice(files, func(i, j int) bool {
+			return files[i].ModTime().Before(files[j].ModTime())
+		})
+
+		// 删除最老的文件
+		for i := 0; i < fileCount-imgNum; i++ {
+			filePath := filepath.Join(folderPath, files[i].Name())
+			err := os.Remove(filePath)
+			if err != nil {
+				fmt.Printf("删除文件 %s 失败：%s\n", filePath, err)
+			} else {
+				fmt.Printf("删除文件 %s 成功\n", filePath)
+			}
+		}
+	}
+}
+
+func main() {
 
 	// // 托盘程序
 	systray.Run(onReady, onExit)
 
-	// 等待所有线程执行完毕
-	// wg.Wait()
 }
 
 /**
@@ -178,25 +213,66 @@ func main() {
  */
 func scheduleSetBackImage() {
 	for {
-		// now := time.Now()
-		// next := now.AddDate(0, 0, 1) // 下一天
-		// next = time.Date(next.Year(), next.Month(), next.Day(), 9, 0, 0, 0, next.Location())
+		now := time.Now()
+		next := now.AddDate(0, 0, 1) // 下一天
+		next = time.Date(next.Year(), next.Month(), next.Day(), 9, 0, 0, 0, next.Location())
 
-		// timer := time.NewTimer(next.Sub(now))
-		// <-timer.C
-		// SetBackImage()
-		timer := time.NewTimer(time.Second * 20)
+		timer := time.NewTimer(next.Sub(now))
 		<-timer.C
-		// 设置随机数种子
-		rand.Seed(time.Now().UnixNano())
+		SetBackImage()
+		// timer := time.NewTimer(time.Second * 20)
+		// <-timer.C
+		// // 设置随机数种子
+		// rand.Seed(time.Now().UnixNano())
 
-		// 生成随机整数
-		randomNumber := rand.Intn(4) // 生成0到99之间的随机数
-		fileNames := [4]string{"9e7c551561cdfc1104ea9bbd7eb4cae1.jpg", "43c784c50c69d2e06648f0dd9a6623bf.jpg", "633019a60b7f98403c462306dfcb79cd.jpg", "fdb07465d5ef92372d38519e31955d60.jpg"}
-		randPath := filepath.Join(CurrentPathDir, fileNames[randomNumber])
-		setWallpaper(randPath)
+		// // 生成随机整数
+		// randomNumber := rand.Intn(4) // 生成0到99之间的随机数
+		// fileNames := [4]string{"9e7c551561cdfc1104ea9bbd7eb4cae1.jpg", "43c784c50c69d2e06648f0dd9a6623bf.jpg", "633019a60b7f98403c462306dfcb79cd.jpg", "fdb07465d5ef92372d38519e31955d60.jpg"}
+		// randPath := filepath.Join(CurrentPathDir, fileNames[randomNumber])
+		// setWallpaper(randPath)
 
 	}
+}
+
+func nextImage() {
+	// 打开Windows桌面壁纸注册表项
+	key, err := registry.OpenKey(registry.CURRENT_USER, `Control Panel\Desktop`, registry.READ)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer key.Close()
+
+	// 读取壁纸路径
+	wallpaperPath, _, err := key.GetStringValue("Wallpaper")
+	if err != nil {
+		log.Fatal(err)
+	}
+	imgName, err := findString(wallpaperPath, "/cache/", ".jpg")
+	if err != nil {
+
+	} else {
+		imgName
+	}
+}
+
+/**
+ * @description:
+ * @return {*}
+ */
+func logImage(logstring string) {
+	// 打开日志文件，如果不存在则创建
+	file, err := os.OpenFile("path/to/logfile.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	// 设置日志输出到文件
+	log.SetOutput(file)
+
+	// 写入日志
+	log.Println(logstring)
+
 }
 
 /**
@@ -206,7 +282,7 @@ func scheduleSetBackImage() {
 func SetBackImage() {
 
 	day := time.Now().Format("2006-01-02")
-	fileName := EncodeMD5(fmt.Sprintf("%s", day)) + ".jpg"
+	fileName := EncodeMD5(day) + ".jpg"
 	// 创建保存图片的完整路径
 	savePath := filepath.Join(CurrentPathDir, fileName)
 
@@ -245,6 +321,8 @@ func onReady() {
 
 	mQuit := systray.AddMenuItem("退出", "退出程序")
 
+	mNext := systray.AddMenuItem("下一张", "下一张壁纸")
+
 	// 设置可以并行执行的操作系统线程的最大数量
 	runtime.GOMAXPROCS(2)
 	// 创建 WaitGroup，用于等待所有线程执行完毕
@@ -255,13 +333,15 @@ func onReady() {
 	go func() {
 		defer wg.Done()
 		for {
-			<-mQuit.ClickedCh
-			systray.Quit()
-			// select {
+			// <-mQuit.ClickedCh
+			// systray.Quit()
+			select {
 
-			// case <-mQuit.ClickedCh:
-			// 	systray.Quit()
-			// }
+			case <-mQuit.ClickedCh:
+				systray.Quit()
+			case <-mNext.ClickedCh:
+
+			}
 			time.Sleep(time.Millisecond * 20)
 		}
 	}()
@@ -282,6 +362,31 @@ func onReady() {
  */
 func onExit() {
 	// clean up here
+}
+
+/**
+ * @description: 截取原始字符串在start,end之间的内容
+ * @param {string} raw   原始字符串
+ * @param {string} start 起始字符串
+ * @param {string} end   终止字符串
+ * @return {string,error} string 截取内容，error 错误信息
+ */
+func findString(raw string, start string, end string) (string, error) {
+	// 查找 start 的位置
+	pidIndex := strings.Index(raw, start)
+	if pidIndex == -1 {
+		return "", errors.New("未找到:" + start)
+	}
+
+	// 查找 end的位置
+	typeIndex := strings.Index(raw, end)
+	if typeIndex == -1 {
+		return "", errors.New("未找到:" + end)
+	}
+	// 截取字符串
+	result := raw[pidIndex+len(start) : typeIndex]
+
+	return result, nil
 }
 
 // 托盘icon 图标
