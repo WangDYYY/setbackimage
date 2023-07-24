@@ -13,6 +13,7 @@ import (
 	"github.com/gocolly/colly"
 	"golang.org/x/sys/windows/registry"
 
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,7 +66,7 @@ func EncodeMD5(value string) string {
 
 /**
  * @description: SetWindowsWallpaper 设置windows壁纸
- * @param {string} path
+ * @param {string} path 图像地址
  * @return {*}
  */
 func setWallpaper(path string) error {
@@ -95,8 +96,8 @@ func setWallpaper(path string) error {
 }
 
 /**
- * @description: 获取bing主页的背景图片
- * @return {*}
+ * @description: 下载bing主页的背景图片
+ * @return {string} 图像路径
  */
 func GetBingBackgroundImageURL() string {
 
@@ -131,7 +132,8 @@ func GetBingBackgroundImageURL() string {
 					// 创建文件
 					file, err := os.Create(savePath)
 					if err != nil {
-						fmt.Println("Error creating file:", err)
+						
+						logImage(fmt.Sprintf("Error creating file:%s", err))
 						return
 					}
 					defer file.Close()
@@ -139,12 +141,13 @@ func GetBingBackgroundImageURL() string {
 					// 将响应的内容写入文件
 					_, err = file.Write(r.Body)
 					if err != nil {
-						fmt.Println("Error writing to file:", err)
+						
+						logImage(fmt.Sprintf("Error writing to file:%s", err))
 						return
 					}
 					// 最多只保留7张壁纸文件
 					delImage(CurrentPathDir, 7)
-					fmt.Println("Image downloaded:", fileName)
+					logImage(fmt.Sprintf("Image downloaded:%s", err))
 				}
 			})
 			imgCollector.Visit(link)
@@ -169,7 +172,7 @@ func delImage(folderPath string, imgNum int) {
 	// 读取文件夹内容
 	files, err := ioutil.ReadDir(folderPath)
 	if err != nil {
-		log.Fatal(err)
+		logImage(fmt.Sprintf("删除多余的壁纸文件读取文件夹err:%s", err))
 	}
 
 	// 统计文件个数
@@ -192,9 +195,7 @@ func delImage(folderPath string, imgNum int) {
 			filePath := filepath.Join(folderPath, files[i].Name())
 			err := os.Remove(filePath)
 			if err != nil {
-				fmt.Printf("删除文件 %s 失败：%s\n", filePath, err)
-			} else {
-				fmt.Printf("删除文件 %s 成功\n", filePath)
+				logImage(fmt.Sprintf("删除文件 %s 失败：%s\n", filePath, err))
 			}
 		}
 	}
@@ -234,34 +235,54 @@ func scheduleSetBackImage() {
 	}
 }
 
+/**
+ * @Description: 更换壁纸
+ * @Date: 2023-07-23 14:13:48
+ * @return {*}
+ */
 func nextImage() {
 	// 打开Windows桌面壁纸注册表项
 	key, err := registry.OpenKey(registry.CURRENT_USER, `Control Panel\Desktop`, registry.READ)
 	if err != nil {
-		log.Fatal(err)
+		logImage(fmt.Sprintf("%s", err))
+		// log.Fatal(err)
 	}
 	defer key.Close()
 
 	// 读取壁纸路径
 	wallpaperPath, _, err := key.GetStringValue("Wallpaper")
-	if err != nil {
-		log.Fatal(err)
-	}
-	imgName, err := findString(wallpaperPath, "/cache/", ".jpg")
-	if err != nil {
 
-	} else {
-		imgName
+	// 获取当前壁纸所在文件夹路径
+	currentFolder := filepath.Dir(wallpaperPath)
+
+	// 获取当前文件夹下的所有图片
+	images, err := filepath.Glob(filepath.Join(currentFolder, "*.jpg"))
+	if err != nil {
+		fmt.Println("Failed to find images:", err)
+		return
 	}
+	// 选择上一张图片作为壁纸
+	for i, image := range images {
+		if image == wallpaperPath {
+			// 如果当前图片是第一张，则选择最后一张作为上一张图片
+			if i == 0 {
+				setWallpaper(images[len(images)-1])
+			}
+			setWallpaper(images[i-1])
+		}
+	}
+
 }
 
 /**
- * @description:
+ * @Description: 保存日志
+ * @Date: 2023-07-23 13:47:34
+ * @param {string} logString
  * @return {*}
  */
-func logImage(logstring string) {
+func logImage(logString string) {
 	// 打开日志文件，如果不存在则创建
-	file, err := os.OpenFile("path/to/logfile.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	file, err := os.OpenFile(CurrentPathDir+"logfile.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -271,7 +292,7 @@ func logImage(logstring string) {
 	log.SetOutput(file)
 
 	// 写入日志
-	log.Println(logstring)
+	log.Println(logString)
 
 }
 
@@ -293,18 +314,19 @@ func SetBackImage() {
 	if err == nil {
 		err := setWallpaper(savePath)
 		if err != nil {
-			fmt.Println("设置桌面背景失败: " + err.Error())
+			
+			logImage(fmt.Sprintf("设置桌面背景失败: %s\n", err.Error()))
 			return
 		}
 	} else if os.IsNotExist(err) {
-		fmt.Println("文件不存在")
+		
 		err := setWallpaper(GetBingBackgroundImageURL())
 		if err != nil {
-			fmt.Println("设置桌面背景失败: " + err.Error())
+			logImage(fmt.Sprintf("设置桌面背景失败,文件不存在: %s\n", err.Error()))
 			return
 		}
 	} else {
-		fmt.Println("发生错误:", err)
+		logImage(fmt.Sprintf("发生错误: %s\n", err.Error()))
 	}
 
 }
@@ -340,7 +362,7 @@ func onReady() {
 			case <-mQuit.ClickedCh:
 				systray.Quit()
 			case <-mNext.ClickedCh:
-
+				nextImage()
 			}
 			time.Sleep(time.Millisecond * 20)
 		}
