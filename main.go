@@ -27,7 +27,7 @@ import (
 const (
 	BingHomeURL    = "https://cn.bing.com"
 	CurrentPathDir = "cache\\"
-	LogfilePath    = "cache\\logfile.log"
+	LogfilePath    = "logfile.log"
 )
 
 const (
@@ -353,8 +353,7 @@ func nextImage() {
  */
 func logImage(logString string) {
 	// 打开日志文件，如果不存在则创建
-	fmt.Println("logImage")
-	file, err := os.OpenFile(CurrentPathDir+"logfile.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	file, err := os.OpenFile(LogfilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
