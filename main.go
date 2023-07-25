@@ -13,7 +13,6 @@ import (
 	"github.com/gocolly/colly"
 	"golang.org/x/sys/windows/registry"
 
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +26,8 @@ import (
 
 const (
 	BingHomeURL    = "https://cn.bing.com"
-	CurrentPathDir = "cache/"
+	CurrentPathDir = "cache\\"
+	LogfilePath    = "cache\\logfile.log"
 )
 
 const (
@@ -51,6 +51,24 @@ var (
  */
 func init() {
 	_ = os.Mkdir(CurrentPathDir, 0755)
+	_, err := os.Stat(LogfilePath)
+
+	// 如果文件不存在，则创建文件
+	if os.IsNotExist(err) {
+		file, err := os.Create(LogfilePath)
+		if err != nil {
+			fmt.Println("Error:", err)
+			return
+		}
+		defer file.Close()
+
+		fmt.Println("File created successfully.")
+	} else if err == nil {
+		fmt.Println("File already exists. Not creating a new file.")
+	} else {
+		fmt.Println("Error:", err)
+		return
+	}
 }
 
 /**
@@ -132,7 +150,7 @@ func GetBingBackgroundImageURL() string {
 					// 创建文件
 					file, err := os.Create(savePath)
 					if err != nil {
-						
+
 						logImage(fmt.Sprintf("Error creating file:%s", err))
 						return
 					}
@@ -141,13 +159,12 @@ func GetBingBackgroundImageURL() string {
 					// 将响应的内容写入文件
 					_, err = file.Write(r.Body)
 					if err != nil {
-						
+
 						logImage(fmt.Sprintf("Error writing to file:%s", err))
 						return
 					}
 					// 最多只保留7张壁纸文件
 					delImage(CurrentPathDir, 7)
-					logImage(fmt.Sprintf("Image downloaded:%s", err))
 				}
 			})
 			imgCollector.Visit(link)
@@ -203,7 +220,7 @@ func delImage(folderPath string, imgNum int) {
 
 func main() {
 
-	// // 托盘程序
+	// 托盘程序
 	systray.Run(onReady, onExit)
 
 }
@@ -221,17 +238,6 @@ func scheduleSetBackImage() {
 		timer := time.NewTimer(next.Sub(now))
 		<-timer.C
 		SetBackImage()
-		// timer := time.NewTimer(time.Second * 20)
-		// <-timer.C
-		// // 设置随机数种子
-		// rand.Seed(time.Now().UnixNano())
-
-		// // 生成随机整数
-		// randomNumber := rand.Intn(4) // 生成0到99之间的随机数
-		// fileNames := [4]string{"9e7c551561cdfc1104ea9bbd7eb4cae1.jpg", "43c784c50c69d2e06648f0dd9a6623bf.jpg", "633019a60b7f98403c462306dfcb79cd.jpg", "fdb07465d5ef92372d38519e31955d60.jpg"}
-		// randPath := filepath.Join(CurrentPathDir, fileNames[randomNumber])
-		// setWallpaper(randPath)
-
 	}
 }
 
@@ -241,6 +247,8 @@ func scheduleSetBackImage() {
  * @return {*}
  */
 func nextImage() {
+
+	fmt.Println("下一张 function")
 	// 打开Windows桌面壁纸注册表项
 	key, err := registry.OpenKey(registry.CURRENT_USER, `Control Panel\Desktop`, registry.READ)
 	if err != nil {
@@ -251,24 +259,31 @@ func nextImage() {
 
 	// 读取壁纸路径
 	wallpaperPath, _, err := key.GetStringValue("Wallpaper")
-
-	// 获取当前壁纸所在文件夹路径
-	currentFolder := filepath.Dir(wallpaperPath)
-
-	// 获取当前文件夹下的所有图片
-	images, err := filepath.Glob(filepath.Join(currentFolder, "*.jpg"))
 	if err != nil {
-		fmt.Println("Failed to find images:", err)
+		logImage(fmt.Sprintf("Failed to 获取壁纸路径:%s\n", err))
+	}
+
+	fileName := CurrentPathDir + filepath.Base(wallpaperPath)
+
+	// fileName =  + fileName
+	// 获取当前文件夹下的所有图片
+	images, err := filepath.Glob(filepath.Join(CurrentPathDir, "*.jpg"))
+	if err != nil {
+		logImage(fmt.Sprintf("Failed to find images:%s\n", err))
+		// fmt.Println("Failed to find images:", err)
 		return
 	}
+
 	// 选择上一张图片作为壁纸
 	for i, image := range images {
-		if image == wallpaperPath {
+		if image == fileName {
 			// 如果当前图片是第一张，则选择最后一张作为上一张图片
 			if i == 0 {
+
 				setWallpaper(images[len(images)-1])
+			} else {
+				setWallpaper(images[i-1])
 			}
-			setWallpaper(images[i-1])
 		}
 	}
 
@@ -282,6 +297,7 @@ func nextImage() {
  */
 func logImage(logString string) {
 	// 打开日志文件，如果不存在则创建
+	fmt.Println("logImage")
 	file, err := os.OpenFile(CurrentPathDir+"logfile.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
@@ -297,7 +313,7 @@ func logImage(logString string) {
 }
 
 /**
- * @description: 设置背景图像
+ * @description: 设置今日背景图像
  * @return {*}
  */
 func SetBackImage() {
@@ -314,12 +330,12 @@ func SetBackImage() {
 	if err == nil {
 		err := setWallpaper(savePath)
 		if err != nil {
-			
+
 			logImage(fmt.Sprintf("设置桌面背景失败: %s\n", err.Error()))
 			return
 		}
 	} else if os.IsNotExist(err) {
-		
+
 		err := setWallpaper(GetBingBackgroundImageURL())
 		if err != nil {
 			logImage(fmt.Sprintf("设置桌面背景失败,文件不存在: %s\n", err.Error()))
@@ -341,9 +357,10 @@ func onReady() {
 
 	systray.AddSeparator()
 
-	mQuit := systray.AddMenuItem("退出", "退出程序")
-
+	mToday := systray.AddMenuItem("今日壁纸", "今日壁纸")
 	mNext := systray.AddMenuItem("下一张", "下一张壁纸")
+
+	mQuit := systray.AddMenuItem("退出", "退出程序")
 
 	// 设置可以并行执行的操作系统线程的最大数量
 	runtime.GOMAXPROCS(2)
@@ -358,11 +375,13 @@ func onReady() {
 			// <-mQuit.ClickedCh
 			// systray.Quit()
 			select {
-
-			case <-mQuit.ClickedCh:
-				systray.Quit()
+			case <-mToday.ClickedCh:
+				SetBackImage()
 			case <-mNext.ClickedCh:
 				nextImage()
+			case <-mQuit.ClickedCh:
+				systray.Quit()
+
 			}
 			time.Sleep(time.Millisecond * 20)
 		}
