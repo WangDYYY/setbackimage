@@ -114,6 +114,63 @@ func setWallpaper(path string) error {
 }
 
 /**
+ * @description: 自启动
+ * @return {*}
+ */
+func selfStart() {
+
+	key, err := registry.OpenKey(registry.CURRENT_USER, `SOFTWARE\Microsoft\Windows\CurrentVersion\Run`, registry.ALL_ACCESS)
+	if err != nil {
+		logImage(fmt.Sprintf("Error :%s", err))
+		return
+	}
+	defer key.Close()
+
+	appPath, err := os.Executable()
+	if err != nil {
+		logImage(fmt.Sprintf("Error :%s", err))
+		return
+	}
+
+	appName := filepath.Base(appPath)
+
+	err = key.SetStringValue(appName, appPath)
+	if err != nil {
+		logImage(fmt.Sprintf("Error :%s", err))
+		return
+	}
+
+	logImage("app added to startup successfully.")
+
+}
+
+func unSelfStart() {
+	key, err := registry.OpenKey(registry.CURRENT_USER, `SOFTWARE\Microsoft\Windows\CurrentVersion\Run`, registry.ALL_ACCESS)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer key.Close()
+
+	appPath, err := os.Executable()
+	if err != nil {
+		logImage(fmt.Sprintf("Error :%s", err))
+		return
+	}
+
+	appName := filepath.Base(appPath)
+
+	// 删除键值
+	err = key.DeleteValue(appName)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	logImage("App removed from startup successfully.")
+}
+
+/**
  * @description: 下载bing主页的背景图片
  * @return {string} 图像路径
  */
@@ -248,7 +305,6 @@ func scheduleSetBackImage() {
  */
 func nextImage() {
 
-	fmt.Println("下一张 function")
 	// 打开Windows桌面壁纸注册表项
 	key, err := registry.OpenKey(registry.CURRENT_USER, `Control Panel\Desktop`, registry.READ)
 	if err != nil {
@@ -357,6 +413,8 @@ func onReady() {
 
 	systray.AddSeparator()
 
+	mStart := systray.AddMenuItem("自启动", "自启动")
+	mEnd := systray.AddMenuItem("取消自启动", "取消自启动")
 	mToday := systray.AddMenuItem("今日壁纸", "今日壁纸")
 	mNext := systray.AddMenuItem("下一张", "下一张壁纸")
 
@@ -375,6 +433,10 @@ func onReady() {
 			// <-mQuit.ClickedCh
 			// systray.Quit()
 			select {
+			case <-mStart.ClickedCh:
+				selfStart()
+			case <-mEnd.ClickedCh:
+				unSelfStart()
 			case <-mToday.ClickedCh:
 				SetBackImage()
 			case <-mNext.ClickedCh:
