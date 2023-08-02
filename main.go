@@ -287,15 +287,29 @@ func main() {
  * @return {*}
  */
 func scheduleSetBackImage() {
+
 	for {
 		now := time.Now()
-		next := now.AddDate(0, 0, 1) // 下一天
-		next = time.Date(next.Year(), next.Month(), next.Day(), 9, 0, 0, 0, next.Location())
+		next := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, now.Location())
+
+		// 如果当前时间已经超过中午12点，则退出循环
+		if now.After(next) {
+			break
+		}
 
 		timer := time.NewTimer(next.Sub(now))
 		<-timer.C
 		SetBackImage()
 	}
+
+	// for {
+	// 	now := time.Now()
+	// 	next := now.Add(20 * time.Second) // 下一次执行时间为当前时间加上20秒
+
+	// 	timer := time.NewTimer(next.Sub(now))
+	// 	<-timer.C
+	// 	SetBackImage()
+	// }
 }
 
 /**
