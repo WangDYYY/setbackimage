@@ -277,6 +277,12 @@ func delImage(folderPath string, imgNum int) {
 
 func main() {
 
+	currentTime := time.Now()
+	hour := currentTime.Hour()
+
+	if hour >= 9 {
+		SetBackImage()
+	}
 	// 托盘程序
 	systray.Run(onReady, onExit)
 
