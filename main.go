@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/url"
 	"runtime"
 	"sort"
 
@@ -25,10 +26,11 @@ import (
 )
 
 const (
-	BingHomeURL    = "https://cn.bing.com"
-	CurrentPathDir = "cache\\"
-	LogfilePath    = "logfile.log"
+	BingHomeURL = "https://cn.bing.com"
 )
+
+var CurrentPathDir = "cache\\"
+var LogfilePath = "logfile.log"
 
 const (
 	SPI_SETDESKWALLPAPER = 0x0014
@@ -50,19 +52,27 @@ var (
  * @return {*}
  */
 func init() {
+	exePath, err := os.Executable()
+	// logImage(fmt.Sprintf("cache dir :%s", filepath.Join(exePath, LogfilePath)))
+	if err != nil {
+		return
+	}
+	exeDir := filepath.Dir(exePath)
+	LogfilePath = filepath.Join(exeDir, LogfilePath)
+	CurrentPathDir = filepath.Join(exeDir, CurrentPathDir)
 	_ = os.Mkdir(CurrentPathDir, 0755)
-	_, err := os.Stat(LogfilePath)
+	_, errState := os.Stat(LogfilePath)
 
 	// 如果文件不存在，则创建文件
-	if os.IsNotExist(err) {
+	if os.IsNotExist(errState) {
+
+		// fmt.Println()
 		file, err := os.Create(LogfilePath)
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
 		}
 		defer file.Close()
-
-		fmt.Println("File created successfully.")
 	} else if err == nil {
 		fmt.Println("File already exists. Not creating a new file.")
 	} else {
@@ -177,6 +187,7 @@ func unSelfStart() {
 func GetBingBackgroundImageURL() string {
 
 	var savePath string
+
 	//1.创建colly收集器
 	c := colly.NewCollector(
 		//2.设置GBK解码，可重复访问
@@ -190,8 +201,20 @@ func GetBingBackgroundImageURL() string {
 
 		// 在HTML响应中查找head标签
 		pageCollector.OnHTML("head", func(e *colly.HTMLElement) {
-			// 在head标签内部查找指定ID的link元素
+			// 在head标签内部查找指定ID的link元素 preloadBg
 			link := e.ChildAttr("#preloadBg", "href")
+
+			//处理url
+			base, _ := url.Parse(BingHomeURL)
+
+			imgu, err := base.Parse(link)
+
+			if err != nil {
+				logImage(fmt.Sprintf("解析url地址错误:%s", err))
+				return
+			}
+			// fmt.Println(u)
+			// fmt.Println(link)
 			imgCollector := colly.NewCollector()
 			// 在Response收到后调用回调函数
 			imgCollector.OnResponse(func(r *colly.Response) {
@@ -224,7 +247,7 @@ func GetBingBackgroundImageURL() string {
 					delImage(CurrentPathDir, 7)
 				}
 			})
-			imgCollector.Visit(link)
+			imgCollector.Visit(imgu.String())
 		})
 		// 使用新的Collector加载HTML响应
 		pageCollector.Visit(r.Request.URL.String())
@@ -339,9 +362,8 @@ func nextImage() {
 		logImage(fmt.Sprintf("Failed to 获取壁纸路径:%s\n", err))
 	}
 
-	fileName := CurrentPathDir + filepath.Base(wallpaperPath)
+	fileName := filepath.Join(CurrentPathDir, filepath.Base(wallpaperPath))
 
-	// fileName =  + fileName
 	// 获取当前文件夹下的所有图片
 	images, err := filepath.Glob(filepath.Join(CurrentPathDir, "*.jpg"))
 	if err != nil {
@@ -350,6 +372,7 @@ func nextImage() {
 		return
 	}
 
+	fmt.Println(images)
 	// 选择上一张图片作为壁纸
 	for i, image := range images {
 		if image == fileName {
